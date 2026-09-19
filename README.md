@@ -1,22 +1,22 @@
-# HEX custom key API
+# HEX custom key API for Railway
 
-Minimal PHP API for Railway. No admin key and no extra authentication.
+Deploy this folder to Railway. It contains a minimal PHP API with custom validity, device limits, and APK-compatible responses. No admin key and no extra authentication are used.
 
 ## Deploy
 
-Upload this folder to GitHub and deploy the repository to Railway. Railway detects the `Dockerfile` and starts PHP on the assigned `PORT`.
+Push the files to GitHub and deploy the repository to Railway. Railway uses the `Dockerfile` and assigns the `PORT` automatically.
 
-The API stores keys in `keys.json`. Railway’s filesystem is normally temporary; use a Railway volume if keys must survive redeploys.
+The API stores keys in `keys.json`. Railway’s filesystem is temporary unless a Railway volume is attached.
 
 ## Generate a key
 
 ```bash
-curl -X POST https://YOUR-RAILWAY-DOMAIN/?action=create \
+curl -X POST 'https://YOUR-RAILWAY-DOMAIN/?action=create' \
   -H 'Content-Type: application/json' \
   -d '{"days":0,"hours":10,"max_devices":1}'
 ```
 
-Example response:
+Response:
 
 ```json
 {
@@ -29,22 +29,21 @@ Example response:
 }
 ```
 
-The key prefix is `HEX-CHATS-` followed by eight random hexadecimal characters.
+## APK routes
 
-## Validity examples
+The APK calls these root query routes:
 
-```json
-{"days":2,"hours":0,"max_devices":2}
-{"days":1,"hours":6,"max_devices":1}
-{"days":0,"hours":10,"max_devices":1}
+```text
+POST https://YOUR-RAILWAY-DOMAIN/?api=challenge
+POST https://YOUR-RAILWAY-DOMAIN/?api=activate
 ```
 
-## Activate and bind a device
+The challenge response contains `nonce`. Activation checks the key, expiry, and device limit, then returns the token fields expected by the APK.
+
+## Manual activation test
 
 ```bash
-curl -X POST 'https://YOUR-RAILWAY-DOMAIN/?action=activate' \
+curl -X POST 'https://YOUR-RAILWAY-DOMAIN/?api=activate' \
   -H 'Content-Type: application/json' \
   -d '{"key":"HEX-CHATS-90EA3A62","device_id":"phone-001"}'
 ```
-
-The first activation binds the device. A new device is rejected after `max_devices` is reached. The same device may activate again until the key expires.

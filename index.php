@@ -57,8 +57,22 @@ function key_response(string $key, array $record): array {
     ];
 }
 
+function b64url(string $value): string {
+    return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+}
+
+function access_token(string $key, int $seconds): string {
+    $header = b64url(json_encode(['alg' => 'none', 'typ' => 'JWT']));
+    $payload = b64url(json_encode(['sub' => $key, 'tier' => 'standard', 'iat' => time(), 'exp' => time() + $seconds]));
+    return $header . '.' . $payload . '.demo';
+}
+
 $body = input();
-$action = strtolower((string) ($body['action'] ?? $_GET['action'] ?? ''));
+$action = strtolower((string) ($body['action'] ?? $_GET['action'] ?? $_GET['api'] ?? ''));
+
+if ($action === 'challenge') {
+    respond(['nonce' => base64_encode(random_bytes(32))]);
+}
 
 /* POST/GET ?action=create
  * Body/query: days, hours, max_devices
@@ -119,6 +133,7 @@ if ($action === 'activate' || $action === 'validate') {
         $keys[$key]['devices'] = $devices;
         save_keys($keys);
     }
+    $remaining = max(1, $expires - time());
     respond([
         'ok' => true,
         'key' => $key,
@@ -127,6 +142,11 @@ if ($action === 'activate' || $action === 'validate') {
         'max_devices' => $record['max_devices'],
         'hours' => $record['hours'],
         'message' => 'activated',
+        'access_token' => access_token($key, $remaining),
+        'refresh_token' => access_token($key, $remaining),
+        'lease' => $record['expires_at'],
+        'tier' => 'standard',
+        'config_version' => 1,
     ]);
 }
 
