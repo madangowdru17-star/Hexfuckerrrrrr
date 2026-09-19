@@ -1,5 +1,6 @@
-FROM php:8.3-cli
+FROM python:3.12-slim
 WORKDIR /app
-COPY index.php /app/index.php
-RUN touch /app/keys.json && chmod 666 /app/keys.json
-CMD ["sh", "-c", "php -S 0.0.0.0:${PORT:-8080} -t /app /app/index.php"]
+COPY server.py README.md /app/
+RUN touch /app/keys.json /app/requests.log
+ENV PYTHONUNBUFFERED=1
+CMD ["sh", "-c", "python3 /app/server.py --host 0.0.0.0 --port ${PORT:-10000}"]
