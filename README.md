@@ -1,38 +1,40 @@
-# HEX-PROTOCOL Railway Server
+# Exact `hex_key_api_python` Railway Deployment
 
-Minimal Railway-ready Python API for the APK. It provides only the required key generator, challenge, and activation behavior.
+This package contains the **same `server.py`** that was tested successfully in Termux. The source file is unchanged; only Railway runs it using the platform `PORT` variable.
 
-## Defaults
+## Redeploy correctly
 
-- Generated-key validity: **10 hours**
-- Generated-key device limit: **1 device**
-- Fixed test key: `HEX-PROTOCOL-GGHU`
-- Fixed-key validity: **10 hours**
-- Fixed-key device limit: **1 device**
-- Device binding: enabled
-- Request logging: `requests.log`
-- Key storage: `keys.json`
+1. Create a new GitHub repository or replace the files in the repository currently deployed on Railway.
+2. Upload exactly these files:
+   - `server.py`
+   - `Dockerfile`
+3. In Railway, deploy from that repository.
+4. Trigger a new deployment and wait until the deployment is healthy.
+5. Do not leave the old PHP service or old deployment connected to the domain.
 
-## Deploy to Railway
+The Dockerfile starts:
 
-1. Upload `server.py`, `Dockerfile`, and this README to a GitHub repository.
-2. Create a Railway project from that repository.
-3. Railway will build the included Dockerfile and provide the `PORT` variable automatically.
-4. Copy the resulting Railway HTTPS domain into the APK when using a hosted build.
+```text
+python3 /app/server.py --host 0.0.0.0 --port ${PORT:-10000}
+```
 
-The server listens on `0.0.0.0` and uses Railway's `PORT` automatically.
+## Confirm the deployed service
 
-## Generate a key
-
-The default generator creates a 10-hour, one-device key:
+Replace the domain with your Railway domain:
 
 ```bash
-curl -X POST 'https://YOUR-RAILWAY-DOMAIN/?action=create' \
+curl -X POST 'https://YOUR-RAILWAY-DOMAIN/?api=challenge' \
   -H 'Content-Type: application/json' \
   -d '{}'
 ```
 
-You may also explicitly send the defaults:
+Expected response:
+
+```json
+{"nonce":"..."}
+```
+
+Generate a key with the same API used locally:
 
 ```bash
 curl -X POST 'https://YOUR-RAILWAY-DOMAIN/?action=create' \
@@ -40,60 +42,29 @@ curl -X POST 'https://YOUR-RAILWAY-DOMAIN/?action=create' \
   -d '{"hours":10,"max_devices":1}'
 ```
 
-## Generate a custom key
-
-Set any validity period and device limit in the request. For example, this creates a **72-hour key for 3 devices**:
-
-```bash
-curl -X POST 'https://YOUR-RAILWAY-DOMAIN/?action=create' \
-  -H 'Content-Type: application/json' \
-  -d '{"hours":72,"max_devices":3}'
-```
-
-You can also use days plus hours:
-
-```bash
-curl -X POST 'https://YOUR-RAILWAY-DOMAIN/?action=create' \
-  -H 'Content-Type: application/json' \
-  -d '{"days":2,"hours":12,"max_devices":5}'
-```
-
-The response returns the generated key, calculated expiry time, total hours, and device limit. The same values are enforced during activation.
-
-Example response:
-
-```json
-{
-  "ok": true,
-  "key": "HEX-CHATS-90EA3A62",
-  "validity": "10 Hours",
-  "expires_at": "2026-09-20 00:37:08",
-  "max_devices": 1,
-  "hours": 10
-}
-```
-
-## APK routes
-
-The APK-compatible routes are:
-
-```text
-POST https://YOUR-RAILWAY-DOMAIN/?api=challenge
-POST https://YOUR-RAILWAY-DOMAIN/?api=activate
-```
-
-The APK sends `license_key` and its device identifier. Activation returns the token, lease, expiry, and device-limit fields expected by the login flow.
-
-## Test the fixed key
+Activate it using the APK-compatible request:
 
 ```bash
 curl -X POST 'https://YOUR-RAILWAY-DOMAIN/?api=activate' \
   -H 'Content-Type: application/json' \
-  -d '{"license_key":"HEX-PROTOCOL-GGHU","device_pubkey":"test-device-1"}'
+  -d '{"license_key":"HEX-PROTOCOL-GGHU","device_pubkey":"railway-test-device"}'
 ```
 
-A second device receives `device limit reached`. The server stores keys and device bindings in `keys.json` and logs request/response records in `requests.log`.
+The APK uses these exact routes:
 
-## Important Railway storage note
+```text
+POST /?api=challenge
+POST /?api=activate
+```
 
-Railway containers can be recreated. For keys to survive redeploys or restarts, attach a persistent Railway volume and mount it at `/app`; otherwise use this as a test server only.
+## Important storage note
+
+`keys.json` and `requests.log` are written inside the container. Attach a Railway volume mounted at `/app` if keys and device bindings must survive container replacement or redeploy.
+
+The APK must be the Railway build configured for:
+
+```text
+https://hexfuckerrrrrr-production.up.railway.app
+```
+
+Do not use the Termux APK with the Railway server and do not deploy the older PHP package over this service.
