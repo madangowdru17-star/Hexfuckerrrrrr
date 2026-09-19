@@ -71,7 +71,7 @@ $body = input();
 $action = strtolower((string) ($body['action'] ?? $_GET['action'] ?? $_GET['api'] ?? ''));
 
 if ($action === 'challenge') {
-    respond(['nonce' => base64_encode(random_bytes(32))]);
+    respond(['nonce' => bin2hex(random_bytes(32))]);
 }
 
 /* POST/GET ?action=create
