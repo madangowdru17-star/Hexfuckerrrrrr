@@ -91,6 +91,31 @@ def validity(days: int, hours: int) -> str:
     return " ".join(parts) if parts else "0 Hours"
 
 
+def parse_expiry(value: object) -> datetime | None:
+    """Parse a custom expiry date in UTC."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            parsed = datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+        except ValueError as exc:
+            raise ValueError("expires_at must use YYYY-MM-DD HH:MM:SS or ISO-8601") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def custom_key_name(value: object) -> str:
+    """Validate and normalize a caller-supplied key name."""
+    key = str(value or "").strip().upper()
+    if not key or len(key) > 128 or any(ord(char) < 33 or ord(char) > 126 for char in key):
+        raise ValueError("custom_key must be 1-128 printable characters")
+    return key
+
+
 def make_record(days: int, hours: int, max_devices: int) -> dict:
     total_hours = max(1, days * 24 + hours)
     now = utc_now()
@@ -122,11 +147,28 @@ def response_for(action: str, body: dict, query: dict) -> tuple[int, dict]:
     if action in {"create", "generate", "new"}:
         days = max(0, int(body.get("days", query.get("days", 0)) or 0))
         hours = max(0, int(body.get("hours", query.get("hours", 10)) or 0))
-        max_devices = max(1, min(100, int(body.get("max_devices", query.get("max_devices", 1)) or 1)))
-        key = "HEX-CHATS-" + secrets.token_hex(4).upper()
-        record = make_record(days, hours, max_devices)
+        max_devices = max(1, min(10000, int(body.get("max_devices", query.get("max_devices", 1)) or 1)))
+        requested_key = body.get("custom_key") or body.get("key") or query.get("custom_key") or query.get("key")
+        key = custom_key_name(requested_key) if requested_key else "HEX-CHATS-" + secrets.token_hex(4).upper()
+        requested_expiry = body.get("expires_at") or query.get("expires_at")
+        expiry = parse_expiry(requested_expiry) if requested_expiry else None
+        if expiry is not None:
+            remaining_hours = max(1, int((expiry - utc_now()).total_seconds() // 3600))
+            record = {
+                "created_at": utc_text(utc_now()),
+                "expires_at": utc_text(expiry),
+                "hours": remaining_hours,
+                "days": days,
+                "validity": validity(days, remaining_hours if not days else hours),
+                "max_devices": max_devices,
+                "devices": [],
+            }
+        else:
+            record = make_record(days, hours, max_devices)
         with STORE_LOCK:
             keys = read_keys()
+            if key in keys:
+                return 409, {"ok": False, "error": "key already exists", "key": key}
             keys[key] = record
             write_keys(keys)
         return 200, {"ok": True, "key": key, "validity": record["validity"], "expires_at": record["expires_at"], "max_devices": max_devices, "hours": record["hours"]}
@@ -167,7 +209,7 @@ def response_for(action: str, body: dict, query: dict) -> tuple[int, dict]:
         access = token(key, remaining)
         return 200, {"ok": True, "key": key, "validity": record["validity"], "expires_at": record["expires_at"], "max_devices": record["max_devices"], "hours": record["hours"], "message": "activated", "access_token": access, "refresh_token": access, "lease": record["expires_at"], "tier": "standard", "config_version": 1}
 
-    return 200, {"ok": True, "api": "HEX-PROTOCOL Python test API", "usage": {"create": "POST or GET ?action=create&days=0&hours=10&max_devices=1", "challenge": "POST ?api=challenge", "activate": "POST ?api=activate with license_key and device_pubkey"}}
+    return 200, {"ok": True, "api": "HEX-PROTOCOL Python test API", "usage": {"create": "POST or GET ?action=create&custom_key=HEX-CIPHER-3HD67HF8&days=0&hours=10&max_devices=10000", "custom_expiry": "Optional expires_at=YYYY-MM-DD HH:MM:SS or ISO-8601", "challenge": "POST ?api=challenge", "activate": "POST ?api=activate with license_key and device_pubkey"}}
 
 
 class Handler(BaseHTTPRequestHandler):
