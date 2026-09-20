@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""HEX-PROTOCOL local test API.
-
-Dependency-free Python 3 server for Termux, desktop testing, or Railway-style hosts.
-It logs every request and response as JSON lines in requests.log.
-"""
+"""HEX-PROTOCOL local test API."""
 from __future__ import annotations
 
 import argparse
@@ -92,7 +88,6 @@ def validity(days: int, hours: int) -> str:
 
 
 def parse_expiry(value: object) -> datetime | None:
-    """Parse a custom expiry date in UTC."""
     text = str(value or "").strip()
     if not text:
         return None
@@ -109,7 +104,6 @@ def parse_expiry(value: object) -> datetime | None:
 
 
 def custom_key_name(value: object) -> str:
-    """Validate and normalize a caller-supplied key name."""
     key = str(value or "").strip().upper()
     if not key or len(key) > 128 or any(ord(char) < 33 or ord(char) > 126 for char in key):
         raise ValueError("custom_key must be 1-128 printable characters")
@@ -143,6 +137,33 @@ def token(key: str, seconds: int) -> str:
 def response_for(action: str, body: dict, query: dict) -> tuple[int, dict]:
     if action == "challenge":
         return 200, {"nonce": secrets.token_hex(32)}
+
+    # ===== NAYA BLOCK START =====
+    if action == "createxit":
+        hours = max(1, int(body.get("hours", query.get("hours", 5)) or 5))
+        max_devices = max(1, int(body.get("max_devices", query.get("max_devices", 1)) or 1))
+        
+        # XITEXE-XXX-XXX format
+        part1 = secrets.token_hex(2).upper()
+        part2 = secrets.token_hex(2).upper()
+        key = f"XITEXE-{part1}-{part2}"
+        
+        record = make_record(0, hours, max_devices)
+        
+        with STORE_LOCK:
+            keys = read_keys()
+            keys[key] = record
+            write_keys(keys)
+        
+        return 200, {
+            "ok": True,
+            "key": key,
+            "validity": record["validity"],
+            "expires_at": record["expires_at"],
+            "max_devices": max_devices,
+            "hours": hours
+        }
+    # ===== NAYA BLOCK END =====
 
     if action in {"create", "generate", "new"}:
         days = max(0, int(body.get("days", query.get("days", 0)) or 0))
@@ -209,7 +230,7 @@ def response_for(action: str, body: dict, query: dict) -> tuple[int, dict]:
         access = token(key, remaining)
         return 200, {"ok": True, "key": key, "validity": record["validity"], "expires_at": record["expires_at"], "max_devices": record["max_devices"], "hours": record["hours"], "message": "activated", "access_token": access, "refresh_token": access, "lease": record["expires_at"], "tier": "standard", "config_version": 1}
 
-    return 200, {"ok": True, "api": "HEX-PROTOCOL Python test API", "usage": {"create": "POST or GET ?action=create&custom_key=HEX-CIPHER-3HD67HF8&days=0&hours=10&max_devices=10000", "custom_expiry": "Optional expires_at=YYYY-MM-DD HH:MM:SS or ISO-8601", "challenge": "POST ?api=challenge", "activate": "POST ?api=activate with license_key and device_pubkey"}}
+    return 200, {"ok": True, "api": "HEX-PROTOCOL Python test API", "usage": {"create": "POST or GET ?action=create&custom_key=HEX-CIPHER-3HD67HF8&days=0&hours=10&max_devices=10000", "createxit": "GET ?action=createxit&hours=5&max_devices=1", "custom_expiry": "Optional expires_at=YYYY-MM-DD HH:MM:SS or ISO-8601", "challenge": "POST ?api=challenge", "activate": "POST ?api=activate with license_key and device_pubkey"}}
 
 
 class Handler(BaseHTTPRequestHandler):
